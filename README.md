@@ -7,4 +7,8 @@ active object as a new referential
     -active object only   
     -selected objects  
     -whole scene  
- working on parent object and children (except directly on children)
+  
+working on parents object with their childen   
+but not children directly, which is logic because their coordinates are bases on parents one. 
+
+I you see possible improvements you are WELCOME
