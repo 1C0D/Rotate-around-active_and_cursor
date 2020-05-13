@@ -17,9 +17,9 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {
-    "name": "Rotate Around active",
+    "name": "Rotate around active and cursor",
     "author": "1COD",
-    "version": (1, 0, 0),
+    "version": (1, 2, 0),
     "blender": (2, 83, 0),
     "location": "View3D",
     "description": "activ object as new space referential. ctrl+. numpad", 
@@ -33,13 +33,25 @@ from mathutils import Matrix, Euler, Vector
 from bpy.types import Operator, Panel
 from bpy.props import FloatProperty, BoolProperty
 
-bpy.types.Scene.rot_x=FloatProperty()   
-bpy.types.Scene.rot_y=FloatProperty() 
-bpy.types.Scene.rot_z=FloatProperty() 
-bpy.types.Scene.loc_x=FloatProperty()   
-bpy.types.Scene.loc_y=FloatProperty()   
-bpy.types.Scene.loc_z=FloatProperty()  
-bpy.types.Scene.whole_scene=BoolProperty()
+bpy.types.Scene.whole_scene=BoolProperty(default=False)
+bpy.types.Scene.around_cursor=BoolProperty(default=False)
+
+def remove_prop (self,context):        
+
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'cur_loc_x')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'cur_loc_y')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'cur_loc_z')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'cur_rot_x')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'cur_rot_y')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'cur_rot_z') 
+
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_x')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_y')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_z')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_x')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_y')                
+    bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_z') 
+  
 
 class OBJ_OT_rot_loc (Operator):    
     bl_idname = "obj.rot_loc"
@@ -48,66 +60,106 @@ class OBJ_OT_rot_loc (Operator):
     
     @classmethod
     def poll (cls, context):
-        return context.object and not context.scene.rot_x and not context.object.parent
+        return context.object and not getattr(context.scene,'rot_x', None) and not context.object.parent    
     
-    def execute(self, context):
+    def execute(self, context):       
+
+        bpy.types.Scene.rot_x=FloatProperty() #for active object
+        bpy.types.Scene.rot_y=FloatProperty() 
+        bpy.types.Scene.rot_z=FloatProperty() 
+        bpy.types.Scene.loc_x=FloatProperty()   
+        bpy.types.Scene.loc_y=FloatProperty()   
+        bpy.types.Scene.loc_z=FloatProperty()            
+ 
         
-        if context.scene.rot_x:
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_x')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_y')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_z')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_x')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_y')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_z')       
-                
-        cao=context.object
-        rot = cao.rotation_euler.copy()
-        loc = cao.location.copy()
+        bpy.types.Scene.cur_rot_x=FloatProperty()  
+        bpy.types.Scene.cur_rot_y=FloatProperty()  
+        bpy.types.Scene.cur_rot_z=FloatProperty()  
+        bpy.types.Scene.cur_loc_x=FloatProperty()  
+        bpy.types.Scene.cur_loc_y=FloatProperty()  
+        bpy.types.Scene.cur_loc_z=FloatProperty() 
+        
+        context.scene.cur_rot_x = context.scene.cursor.rotation_euler.x
+        context.scene.cur_rot_y = context.scene.cursor.rotation_euler.y
+        context.scene.cur_rot_z = context.scene.cursor.rotation_euler.z   
+        context.scene.cur_loc_x = context.scene.cursor.location.x
+        context.scene.cur_loc_y = context.scene.cursor.location.y 
+        context.scene.cur_loc_z = context.scene.cursor.location.z  
+#        cao=context.active_object
+#        context.scene.rot_x = cao.rotation_euler.x #doublon to make poll True
+
+
+        cao=context.active_object
         context.scene.rot_x = cao.rotation_euler.x
         context.scene.rot_y = cao.rotation_euler.y
         context.scene.rot_z = cao.rotation_euler.z   
         context.scene.loc_x = cao.location.x
         context.scene.loc_y = cao.location.y 
-        context.scene.loc_z = cao.location.z   
+        context.scene.loc_z = cao.location.z
+        if context.scene.around_cursor: 
+            rot = context.scene.cursor.rotation_euler.copy()
+            loc = context.scene.cursor.location.copy()         
+        else:
+            rot = cao.rotation_euler.copy()
+            loc = cao.location.copy()        
+
         to_qt = rot.to_quaternion()
         to_qt.invert()
 
         R = to_qt.to_matrix().to_4x4()
         T = Matrix.Translation(loc)
         M = T @ R @ T.inverted()
+        if context.scene.around_cursor:
+            M=M.inverted()
         
         if context.scene.whole_scene:            
             for obj in context.scene.objects:
                 if obj.parent :
                     continue
-                obj.location = M @ obj.location -loc
+                if context.scene.around_cursor:
+                    obj.location = M @ loc
+                else:
+                    obj.location = M @ obj.location -loc
                 obj.rotation_euler.rotate(M)            
         else:
             for obj in context.selected_objects:
                 if obj.parent:
                     continue
-                obj.location = M @ obj.location -loc
+                if context.scene.around_cursor:
+                    obj.location = M @ loc
+                else:
+                    obj.location = M @ obj.location -loc
                 obj.rotation_euler.rotate(M)
             
         return {'FINISHED'}
 
-class OBJ_OT_inv_rot_loc (Operator):    
-    bl_idname = "obj.inv_rot_loc"
-    bl_label = "matrice loc rot from active"
+class OBJ_OT_rot_loc_cancel (Operator):    
+    bl_idname = "obj.rot_loc_cancel"
+    bl_label = "cancel rot loc"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll (cls, context):
-        return context.object and context.scene.rot_x
-        
+        return context.object and getattr(context.scene, 'rot_x', None)
     def execute(self, context):
         
-        rot = Euler((
-        context.scene.rot_x,
-        context.scene.rot_y,
-        context.scene.rot_z), 
+        if context.scene.around_cursor:
+            rot = Euler((
+                     context.scene.cur_rot_x,
+                    context.scene.cur_rot_y,
+                    context.scene.cur_rot_z), 
         'XYZ')
-        loc = (context.scene.loc_x,context.scene.loc_y,context.scene.loc_z)
+            loc = (context.scene.loc_x,
+                    context.scene.loc_y,
+                    context.scene.loc_z)# - context.scene.cur_loc_z)
+            loc1 = (context.scene.cur_loc_x,context.scene.cur_loc_y,context.scene.cur_loc_z) 
+        else:
+            rot = Euler((
+            context.scene.rot_x,
+            context.scene.rot_y,
+            context.scene.rot_z), 
+            'XYZ')        
+            loc = (context.scene.loc_x,context.scene.loc_y,context.scene.loc_z)  
         
         to_qt = rot.to_quaternion()
         to_qt.invert()
@@ -116,33 +168,30 @@ class OBJ_OT_inv_rot_loc (Operator):
         T = Matrix.Translation(loc)
         M = T @ R @ T.inverted()
         M = M.inverted() #rotation inverted
+        if context.scene.around_cursor:
+            M = M.inverted()            
         
         if context.scene.whole_scene:
             for obj in context.scene.objects:
                 if obj.parent:
                     continue
-                obj.location += Vector(loc)  #location before and invert
-                obj.location = M @ obj.location
-                obj.rotation_euler.rotate(M)            
-            
+                obj.location = M @ (obj.location + Vector(loc))
+                obj.rotation_euler.rotate(M)
         else:
             for obj in context.selected_objects:
                 if obj.parent:
-                    continue
-                obj.location += Vector(loc)  #location before and invert
-                obj.location = M @ obj.location
-                obj.rotation_euler.rotate(M)
-        
-        if context.scene.rot_x:
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_x')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_y')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_z')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_x')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_y')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_z') 
-        
+                    continue 
+                if context.scene.around_cursor: 
+                    obj.location = M @ (obj.location + Vector(loc)-Vector(loc1))
+                else:
+                    obj.location = M @ (obj.location + Vector(loc))
+                obj.rotation_euler.rotate(M)                      
+ 
+        remove_prop(self,context)
+        del bpy.types.Scene.rot_x
+            
         return {'FINISHED'}
-
+ 
 class OBJ_OT_rot_loc_confirm (Operator):    
     bl_idname = "obj.rot_loc_confirm"
     bl_label = "matrice loc rot from active"
@@ -150,17 +199,13 @@ class OBJ_OT_rot_loc_confirm (Operator):
 
     @classmethod
     def poll (cls, context):
-        return context.object and context.scene.rot_x
+        return context.object and getattr(context.scene, 'rot_x', None)
         
-    def execute(self, context):
+    def execute(self, context):        
         
-        if context.scene.rot_x:
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_x')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_y')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'loc_z')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_x')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_y')                
-            bpy.ops.wm.properties_remove(data_path = 'scene', property = 'rot_z')        
+
+        remove_prop(self,context) 
+        del bpy.types.Scene.rot_x       
         
         return {'FINISHED'}
 
@@ -173,20 +218,21 @@ class OBJ_PT_loc_rot_menu(Panel):
     
     def draw(self, context):
         layout = self.layout
-        
+        layout.separator() #to hold the menu to drag it easier
         row = layout.row()
-        row.operator("obj.rot_loc",text='Active new referential')       
-        row.prop(context.scene,'whole_scene',text='Whole Scene')
+        label='Cursor'if context.scene.around_cursor else 'Active'
+        row.operator("obj.rot_loc",text=label)       
+        row.prop(context.scene,'whole_scene',text='Scene')
+        row.prop(context.scene,'around_cursor',text='Cursor')
         row=layout.row()
         row.operator("obj.rot_loc_confirm", text='Confirm')
-        row.operator("obj.inv_rot_loc", text='Cancel')
-
+        row.operator("obj.rot_loc_cancel", text='Cancel')
 
 addon_keymaps = []
 
 def register():
     bpy.utils.register_class(OBJ_OT_rot_loc)
-    bpy.utils.register_class(OBJ_OT_inv_rot_loc)
+    bpy.utils.register_class(OBJ_OT_rot_loc_cancel)
     bpy.utils.register_class(OBJ_PT_loc_rot_menu)
     bpy.utils.register_class(OBJ_OT_rot_loc_confirm)
     
@@ -201,7 +247,7 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(OBJ_OT_rot_loc)
-    bpy.utils.unregister_class(OBJ_OT_inv_rot_loc)
+    bpy.utils.unregister_class(OBJ_OT_rot_loc_cancel)
     bpy.utils.unregister_class(OBJ_PT_loc_rot_menu)
     bpy.utils.unregister_class(OBJ_OT_rot_loc_confirm)
 
