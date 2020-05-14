@@ -33,27 +33,27 @@ from mathutils import Matrix, Euler, Vector
 from bpy.types import Operator, Panel
 from bpy.props import FloatProperty, BoolProperty
 
-def remove_prop (self,context):        
+def remove_prop (self,context):  
     
-    rmv=bpy.ops.wm.properties_remove #kind of unlink. if del prop cause error when ctrl+z
+    del bpy.types.Scene.rot_x       
+    del bpy.types.Scene.rot_y       
+    del bpy.types.Scene.rot_z       
+    del bpy.types.Scene.loc_x       
+    del bpy.types.Scene.loc_y
+    del bpy.types.Scene.loc_z
+    del bpy.types.Scene.cur_rot_x
+    del bpy.types.Scene.cur_rot_y
+    del bpy.types.Scene.cur_rot_z
+    del bpy.types.Scene.cur_loc_x
+    del bpy.types.Scene.cur_loc_y
+    del bpy.types.Scene.cur_loc_z
     
-    rmv(data_path = 'scene', property = 'cur_loc_x')                
-    rmv(data_path = 'scene', property = 'cur_loc_y')                
-    rmv(data_path = 'scene', property = 'cur_loc_z')                
-    rmv(data_path = 'scene', property = 'cur_rot_x')                
-    rmv(data_path = 'scene', property = 'cur_rot_y')                
-    rmv(data_path = 'scene', property = 'cur_rot_z') 
-
-    rmv(data_path = 'scene', property = 'loc_x')                
-    rmv(data_path = 'scene', property = 'loc_y')                
-    rmv(data_path = 'scene', property = 'loc_z')                
-    rmv(data_path = 'scene', property = 'rot_x')                
-    rmv(data_path = 'scene', property = 'rot_y')                
-    rmv(data_path = 'scene', property = 'rot_z')     
 
 Scn = bpy.types.Scene
 Scn.whole_scene=BoolProperty(default=False)
 Scn.around_cursor=BoolProperty(default=False)
+
+ON=False
 
 def loc_rot_props(self,context):
     
@@ -152,9 +152,12 @@ class OBJ_OT_rot_loc (Operator):
     
     @classmethod
     def poll (cls, context):
-        return context.object and not getattr(context.scene,'rot_x', None) and not context.object.parent    #getattr because not rot_x is not enough, can be == 0
+        return context.object and not ON and not context.object.parent    #getattr because not rot_x is not enough, can be == 0
     
-    def execute(self, context):   
+    def execute(self, context): 
+        
+        global ON
+        ON=True  
         
         context = bpy.context    
         scn = context.scene 
@@ -170,18 +173,19 @@ class OBJ_OT_rot_loc (Operator):
         R = to_qt.to_matrix().to_4x4()
         T = Matrix.Translation(loc)
         M = T @ R @ T.inverted()
-
             
         if scn.whole_scene:
             obj = scn.objects
         else:
             obj = context.selected_objects
-        
+                 
+
         for ob in obj:
             if ob.parent:
                 continue
             ob.location = M @ ob.location -loc
-            ob.rotation_euler.rotate(M)
+            ob.rotation_euler.rotate(M)           
+            
             if scn.around_cursor:
                 ob.location +=  self.loc_cur
             
@@ -195,9 +199,11 @@ class OBJ_OT_rot_loc_cancel (Operator):
 
     @classmethod
     def poll (cls, context):
-        return context.object and getattr(context.scene, 'rot_x', None)
+        return context.object and ON
     def execute(self, context):
         
+        global ON
+        ON=False  
         context = bpy.context    
         scn = context.scene          
 
@@ -223,15 +229,16 @@ class OBJ_OT_rot_loc_cancel (Operator):
             if ob.parent:
                 continue            
             
-            if scn.around_cursor:
-                ob.location = M @ (ob.location + loc- self.loc_curs)
+            if scn.around_cursor: 
+                ob.location = M @ (ob.location + loc- self.loc_curs)               
+                    
             else:
                 ob.location = M @ (ob.location + loc)
                 
             ob.rotation_euler.rotate(M)
  
         remove_prop(self,context)
-        del bpy.types.Scene.rot_x
+
             
         return {'FINISHED'}
     
@@ -243,12 +250,14 @@ class OBJ_OT_rot_loc_confirm (Operator):
 
     @classmethod
     def poll (cls, context):
-        return context.object and getattr(context.scene, 'rot_x', None)
+        return context.object and ON
         
-    def execute(self, context):      
+    def execute(self, context):  
+        
+        global ON
+        ON=False     
 
-        remove_prop(self,context) 
-        del bpy.types.Scene.rot_x       
+        remove_prop(self,context)      
         
         return {'FINISHED'}
     
@@ -265,12 +274,13 @@ class OBJ_PT_loc_rot_menu(Panel):
         scn = context.scene
         layout = self.layout
         layout.separator() #to hold the menu to drag it easier
-        row = layout.row()
-        label='Cursor'if scn.around_cursor else 'Active'
-        row.operator("obj.rot_loc",text=label)       
+        row = layout.row(align=True)
+        row.alignment = 'LEFT'   
         row.prop(scn,'whole_scene',text='Scene')
         row.prop(scn,'around_cursor',text='Cursor')
         row=layout.row()
+        label='Cursor'if scn.around_cursor else 'Active'
+        row.operator("obj.rot_loc",text=label)    
         row.operator("obj.rot_loc_confirm", text='Confirm')
         row.operator("obj.rot_loc_cancel", text='Cancel')
         
